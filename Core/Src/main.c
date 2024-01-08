@@ -59,16 +59,7 @@ static void MX_ADC_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void uint32ToHex(uint32_t value, uint8_t* buffer) { //Buff max be 9
-    // Set the null terminator at the end of the buffer
-    buffer[8] = '\n';
 
-    // Convert each nibble (4 bits) of the uint32_t to a hex character
-    for (int i = 7; i >= 0; i--) {
-        uint8_t nibble = (value >> (4 * i)) & 0xF;
-        buffer[7 - i] = (nibble < 10) ? ('0' + nibble) : ('A' + (nibble - 10));
-    }
-}
 /* USER CODE END 0 */
 
 /**
@@ -102,13 +93,17 @@ int main(void)
   MX_ADC_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
+  HAL_ADCEx_Calibration_Start(&hadc);
+  //while (!(ADC1->ISR & 0X800));//Waiting for Calibration to finish - does HAL provides this?
+  HAL_Delay(5000); //TODO
+
   HAL_ADC_Start_DMA(&hadc, adc, 8); //Start AD conversion with DMA
   //TODO Here you must Wait for USB initialization
-  uint8_t data[9] = "12345678\n";
-  uint8_t data2[9] = "--------\n";
+  uint8_t data[5] = "\n";
+  //uint8_t data2[9] = "--------\n";
+  uint32_t avg = 0,cnt = 0;
   /* USER CODE END 2 */
-  uint32_t avg = adc[1];
-  uint32_t cnt = 0;
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
@@ -117,8 +112,16 @@ int main(void)
 	  avg /= 2;
 	  cnt++;
 	  if (cnt == 640000) {
-		  uint32ToHex(avg, data);
-		  CDC_Transmit_FS(data, 9);
+		  //This is FCKEDUP but no space :D
+		  data[0]=(uint8_t)(avg*805664i/1000000000i);
+		  data[1]='.';
+		  data[2]=(uint8_t)(avg*805664i/100000000i - data[0]*10);
+		  data[3]=(uint8_t)(avg*805664i/10000000i - data[0]*100 - data[2]*10);
+		  data[4]='\n';
+		  data[0]+=0x30;
+		  data[2]+=0x30;
+		  data[3]+=0x30;
+		  CDC_Transmit_FS(data, 5);
 		  cnt = 0;
 	  }
 	  //for(int i = 0; i != 8; i++) {
@@ -149,8 +152,10 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI14|RCC_OSCILLATORTYPE_HSI48;
   RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
+  RCC_OscInitStruct.HSI14State = RCC_HSI14_ON;
+  RCC_OscInitStruct.HSI14CalibrationValue = 16;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -199,7 +204,7 @@ static void MX_ADC_Init(void)
   /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
   */
   hadc.Instance = ADC1;
-  hadc.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+  hadc.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
   hadc.Init.Resolution = ADC_RESOLUTION_12B;
   hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
@@ -311,11 +316,26 @@ static void MX_DMA_Init(void)
   */
 static void MX_GPIO_Init(void)
 {
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
 /* USER CODE BEGIN MX_GPIO_Init_1 */
 /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+
+  /*Configure GPIO pins : PB8 PB1 */
+  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PF0 PF1 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
