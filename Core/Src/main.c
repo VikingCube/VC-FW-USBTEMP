@@ -59,7 +59,37 @@ static void MX_ADC_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+uint16_t pow10(uint8_t x)
+{
+	uint16_t res = 1;
+	for (uint8_t i = 0; i < x; i++) {
+		res*=10;
+	}
+	return res;
+}
+void toString(float number, uint8_t *target, uint8_t size)
+/*
+ * Target must be at least 7 long "ABC.EF\n"
+ */
+{
+	//integer part
+	uint8_t x = (uint8_t)number;
+	uint8_t f = (uint8_t)((number-x)*100);
+	uint16_t d = pow10(size-2-2-1); //2 for the float part, 2 for the '.' and the '\n'
+	for(uint8_t i = 0; i<size-4; i++) {
+		uint8_t res = x/d;
+		x -= d*res;
+		d /= 10;
+		target[i] = res+0x30;
+	}
 
+	//float part
+	target[size-4] = '.';
+	uint8_t temp = f/10;
+	target[size-3] = temp+0x30;
+	target[size-2] = f-(temp*10)+0x30;
+	target[size-1] = '\n';
+}
 /* USER CODE END 0 */
 
 /**
@@ -99,9 +129,10 @@ int main(void)
 
   HAL_ADC_Start_DMA(&hadc, adc, 8); //Start AD conversion with DMA
   //TODO Here you must Wait for USB initialization
-  uint8_t data[5] = "\n";
+  uint8_t data[7] = {0};
   //uint8_t data2[9] = "--------\n";
   uint32_t avg = 0,cnt = 0;
+  float res = 0;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -112,16 +143,9 @@ int main(void)
 	  avg /= 2;
 	  cnt++;
 	  if (cnt == 640000) {
-		  //This is FCKEDUP but no space :D
-		  data[0]=(uint8_t)(avg*805664i/1000000000i);
-		  data[1]='.';
-		  data[2]=(uint8_t)(avg*805664i/100000000i - data[0]*10);
-		  data[3]=(uint8_t)(avg*805664i/10000000i - data[0]*100 - data[2]*10);
-		  data[4]='\n';
-		  data[0]+=0x30;
-		  data[2]+=0x30;
-		  data[3]+=0x30;
-		  CDC_Transmit_FS(data, 5);
+		  res = avg*3.3/4096; //Convert it to voltage
+		  toString(res, data, 7);
+		  CDC_Transmit_FS(data, 7);
 		  cnt = 0;
 	  }
 	  //for(int i = 0; i != 8; i++) {

@@ -64,8 +64,8 @@ all: main-build
 main-build: usb-temp.elf secondary-outputs
 
 # Tool invocations
-usb-temp.elf usb-temp.map: $(OBJS) $(USER_OBJS) C:\Users\marcz\Documents\pro\usb-temp-fw\STM32F042F4PX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "usb-temp.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0 -T"C:\Users\marcz\Documents\pro\usb-temp-fw\STM32F042F4PX_FLASH.ld" --specs=nosys.specs -Wl,-Map="usb-temp.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+usb-temp.elf usb-temp.map: $(OBJS) $(USER_OBJS) C:\Users\marcz\Documents\pro\usb-temp-fw\STM32F042F6PX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "usb-temp.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0 -T"C:\Users\marcz\Documents\pro\usb-temp-fw\STM32F042F6PX_FLASH.ld" --specs=nosys.specs -Wl,-Map="usb-temp.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
