@@ -47,6 +47,12 @@ DMA_HandleTypeDef hdma_adc;
 
 /* USER CODE BEGIN PV */
 uint32_t adc[8]; //AD results will be stored here
+
+const uint8_t* json1 = (const uint8_t*)"{ \"temp\" : ["; //14
+const uint8_t* json2 = (const uint8_t*)"] }\n"; //4
+const uint8_t* sep   = (const uint8_t*)", ";
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -84,28 +90,39 @@ uint16_t pow10(uint8_t x)
 	return res;
 }
 
-void toString(double number, uint8_t *target, uint8_t size)
+uint8_t toString(double number, uint8_t *target, uint8_t size)
 /*
- * Target must be at least 7 long "ABC.EF\n"
+ * Target must be at least 6 long "ABC.EF"
  */
 {
 	//integer part
+	uint8_t realsize = 4;
 	uint16_t x = (uint16_t)number;
 	uint8_t f = (uint8_t)((number-x)*100);
-	uint16_t d = pow10(size-2-2-1); //2 for the float part, 2 for the '.' and the '\n'
-	for(uint8_t i = 0; i<size-4; i++) {
+	uint16_t d = pow10(size-2-1-1); //2 for the float part, 1 for the '.'
+	uint8_t leading = 1;
+
+	for(uint8_t i = 0; i<size-3; i++) {
 		uint8_t res = x/d;
 		x -= d*res;
 		d /= 10;
 		target[i] = res+0x30;
+		if (leading) {
+			if (res != 0) {
+				leading = 0;
+			}
+		} else {
+			realsize++;
+		}
 	}
 
 	//float part
-	target[size-4] = '.';
+	target[size-3] = '.';
 	uint8_t temp = f/10;
-	target[size-3] = temp+0x30;
-	target[size-2] = f-(temp*10)+0x30;
-	target[size-1] = '\n';
+	target[size-2] = temp+0x30;
+	target[size-1] = f-(temp*10)+0x30;
+
+	return realsize;
 }
 
 void calibrateAD() {
@@ -148,9 +165,10 @@ int main(void)
   calibrateAD();
   HAL_ADC_Start_DMA(&hadc, adc, 8); //Start AD conversion with DMA
   //TODO Here you must Wait for USB initialization
-  uint8_t data[9] = {0}; //+4
+  uint8_t data[8] = {0}; //+4
   //uint8_t data2[9] = "--------\n";
-  uint32_t avg = 0,cnt = 0;
+  uint32_t avg[8] = {0};
+  uint32_t cnt = 0;
   float res = 0;
   /* USER CODE END 2 */
 
@@ -159,17 +177,25 @@ int main(void)
   //TODO: Check internal temp, recalibrate AD if the temp changes enough
   while (1)
   {
-	  avg += adc[1];
-	  avg /= 2;
+	  for (uint8_t x = 0 ; x < 8; x++) {
+		  avg[x] += adc[x];
+		  avg[x] /= 2;
+	  }
 	  cnt++;
-	  if (cnt == 640000) {
-		  //Convert AD value to voltage
-		  res = avg*3.3/4096;
-		  //Calculate the R of the thermistor
-		  res = res/(3.3-res)*10000;
-		  res = thermistor_to_temperature(res, 10000, 3950, 25);
-		  toString(res, data, 9);
-		  while (CDC_Transmit_FS(data, 9) != USBD_OK) {};
+	  if (cnt == 320000) {
+		  while (CDC_Transmit_FS((uint8_t*)json1, 14) != USBD_OK) {}; //Send json1
+		  for (uint8_t x = 0 ; x < 8; x++) {
+			  //Convert AD value to voltage
+			  res = avg[x]*3.3/4096;
+			  //Calculate the R of the NTC
+			  res = res/(3.3-res)*10000;
+			  res = thermistor_to_temperature(res, 10000, 3950, 25);
+			  if (res < 0) res = 0; //Not connected NTC
+			  uint8_t s = toString(res, data, 8);
+			  while (CDC_Transmit_FS(&data[8-s], s) != USBD_OK) {};
+			  if (x != 7) while (CDC_Transmit_FS((uint8_t*)sep, 2) != USBD_OK) {};
+		  }
+		  while (CDC_Transmit_FS((uint8_t*)json2, 4) != USBD_OK) {}; //Send json2
 		  cnt = 0;
 	  }
     /* USER CODE END WHILE */
