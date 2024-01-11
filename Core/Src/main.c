@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "usbd_cdc_if.h"
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,6 +60,21 @@ static void MX_ADC_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+double thermistor_to_temperature(
+		double resistance
+	   ,double nominal_resistance
+	   ,double beta_value
+	   ,double nominal_temperature
+	   )
+{
+    // Steinhart-Hart equation
+    double steinhart = log(resistance / nominal_resistance) / beta_value;
+    steinhart += 1.0 / (nominal_temperature + 273.15);
+    steinhart = 1.0 / steinhart - 273.15;
+
+    return steinhart;
+}
+
 uint16_t pow10(uint8_t x)
 {
 	uint16_t res = 1;
@@ -67,13 +83,14 @@ uint16_t pow10(uint8_t x)
 	}
 	return res;
 }
-void toString(float number, uint8_t *target, uint8_t size)
+
+void toString(double number, uint8_t *target, uint8_t size)
 /*
  * Target must be at least 7 long "ABC.EF\n"
  */
 {
 	//integer part
-	uint8_t x = (uint8_t)number;
+	uint16_t x = (uint16_t)number;
 	uint8_t f = (uint8_t)((number-x)*100);
 	uint16_t d = pow10(size-2-2-1); //2 for the float part, 2 for the '.' and the '\n'
 	for(uint8_t i = 0; i<size-4; i++) {
@@ -89,6 +106,11 @@ void toString(float number, uint8_t *target, uint8_t size)
 	target[size-3] = temp+0x30;
 	target[size-2] = f-(temp*10)+0x30;
 	target[size-1] = '\n';
+}
+
+void calibrateAD() {
+	  HAL_ADCEx_Calibration_Start(&hadc);
+	  while (HAL_ADC_GetState(&hadc) != HAL_ADC_STATE_READY) {}
 }
 /* USER CODE END 0 */
 
@@ -123,13 +145,10 @@ int main(void)
   MX_ADC_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
-  HAL_ADCEx_Calibration_Start(&hadc);
-  //while (!(ADC1->ISR & 0X800));//Waiting for Calibration to finish - does HAL provides this?
-  HAL_Delay(5000); //TODO
-
+  calibrateAD();
   HAL_ADC_Start_DMA(&hadc, adc, 8); //Start AD conversion with DMA
   //TODO Here you must Wait for USB initialization
-  uint8_t data[7] = {0};
+  uint8_t data[9] = {0}; //+4
   //uint8_t data2[9] = "--------\n";
   uint32_t avg = 0,cnt = 0;
   float res = 0;
@@ -137,25 +156,22 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  //TODO: Check internal temp, recalibrate AD if the temp changes enough
   while (1)
   {
 	  avg += adc[1];
 	  avg /= 2;
 	  cnt++;
 	  if (cnt == 640000) {
-		  res = avg*3.3/4096; //Convert it to voltage
-		  toString(res, data, 7);
-		  CDC_Transmit_FS(data, 7);
+		  //Convert AD value to voltage
+		  res = avg*3.3/4096;
+		  //Calculate the R of the thermistor
+		  res = res/(3.3-res)*10000;
+		  res = thermistor_to_temperature(res, 10000, 3950, 25);
+		  toString(res, data, 9);
+		  while (CDC_Transmit_FS(data, 9) != USBD_OK) {};
 		  cnt = 0;
 	  }
-	  //for(int i = 0; i != 8; i++) {
-
-	  	  	//HAL_Delay(50);
-	  		//uint32ToHex(adc[1], data);
-	  		//CDC_Transmit_FS(data, 9);
-	  //}
-	  //HAL_Delay(500);
-	  //CDC_Transmit_FS(data2, 9);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
