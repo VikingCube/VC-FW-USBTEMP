@@ -46,7 +46,7 @@ ADC_HandleTypeDef hadc;
 DMA_HandleTypeDef hdma_adc;
 
 /* USER CODE BEGIN PV */
-uint32_t adc[8]; //AD results will be stored here
+uint32_t adc[9]; //AD results will be stored here 0-7, Internal Temperature 8
 
 const uint8_t* json1 = (const uint8_t*)"{ \"temp\" : ["; //14
 const uint8_t* json2 = (const uint8_t*)"] }\n"; //4
@@ -163,20 +163,20 @@ int main(void)
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
   calibrateAD();
-  HAL_ADC_Start_DMA(&hadc, adc, 8); //Start AD conversion with DM
+  HAL_ADC_Start_DMA(&hadc, adc, 9); //Start AD conversion with DM
   uint8_t data[8] = {0};
-  uint32_t avg[8] = {0};
+  uint32_t avg[9] = {0};
   uint32_t cnt = 0;
-  float res = 0;
+  float res = 0, powersource = 0;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  //TODO: Check internal temperature, re-calibrate AD if the temperature changes enough
+  //TODO: Calibrate internal sensor, re-calibrate AD if internal changes +-5Celsius
   while (1)
   {
 	  //Running average for all channel
-	  for (uint8_t x = 0 ; x < 8; x++) {
+	  for (uint8_t x = 0 ; x < 9; x++) {
 		  avg[x] += adc[x];
 		  avg[x] /= 2;
 	  }
@@ -186,11 +186,12 @@ int main(void)
 
 		  while (CDC_Transmit_FS((uint8_t*)json1, 14) != USBD_OK) {}; //Send json1
 		  //Send Channel values
-		  for (uint8_t x = 0 ; x < 8; x++) {
+		  for (uint8_t x = 0 ; x < 9; x++) {
 			  //Convert AD value to voltage
-			  res = avg[x]*3.3/4096;
+			  powersource = 3.3/4096;
+			  res = avg[x]*powersource/4096;
 			  //Calculate the R of the NTC
-			  res = res/(3.3-res)*10000;
+			  res = res/(powersource-res)*10000;
 			  //Convert R to Temperature
 			  res = thermistor_to_temperature(res, 10000, 3950, 25);
 			  //Fix non connected NTC to 0
@@ -200,7 +201,7 @@ int main(void)
 			  //Send number
 			  while (CDC_Transmit_FS(&data[8-s], s) != USBD_OK) {};
 			  //Add "," unless this is the last value in the array
-			  if (x != 7) while (CDC_Transmit_FS((uint8_t*)sep, 2) != USBD_OK) {};
+			  if (x != 8) while (CDC_Transmit_FS((uint8_t*)sep, 2) != USBD_OK) {};
 		  }
 
 		  while (CDC_Transmit_FS((uint8_t*)json2, 4) != USBD_OK) {}; //Send json2
@@ -357,6 +358,14 @@ static void MX_ADC_Init(void)
   /** Configure for the selected ADC regular channel to be converted.
   */
   sConfig.Channel = ADC_CHANNEL_7;
+  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel to be converted.
+  */
+  sConfig.Channel = ADC_CHANNEL_TEMPSENSOR;
   if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
   {
     Error_Handler();
